@@ -1,11 +1,10 @@
 from models.ftp import Ftp
 from models.files import Files
+from models.redis import Redis
 from models.config import Config
 from models.databases import Database
 from models.download.old import Old
 from models.download.mobile import Mobile
-
-import redis
 
 from multiprocessing import Process
 

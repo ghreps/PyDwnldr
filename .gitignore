@@ -3,3 +3,5 @@ __pycache__/
 .vscode/
 .ini
 config.ini
+macs.txt
+ftp/

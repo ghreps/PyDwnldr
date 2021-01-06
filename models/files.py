@@ -22,7 +22,7 @@ class Files:
             self.path = path
             self.read_macs()
     
-    def check(self):
+    def check_mac_file(self):
         if os.path.exists('macs.txt'):
             now = time()
             lifetime = self.config.get('MACS LIST', 'lifetime')

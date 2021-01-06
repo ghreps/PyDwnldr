@@ -12,9 +12,10 @@ class Ftp:
 
     def __init__(self, path = ''):
         self.config = Config()
-        self.ip = self.config.get('FTP', 'ip')
-        self.user = self.config.get('FTP', 'login')
-        self.pswd = self.config.get('FTP', 'password')
+        self.ip = self.config.get('FTP', 'host')
+        self.dir = self.config.get('FTP', 'dir')
+        self.user = self.config.get('FTP', 'user')
+        self.pswd = self.config.get('FTP', 'pswd')
         self.path = path
 
         if path != '':
@@ -27,6 +28,7 @@ class Ftp:
         try:
             with FTP(self.ip, self.user, self.pswd) as ftp:
                 temp, files = [], []
+                ftp.cwd(self.dir) 
                 ftp.retrlines('LIST', temp.append)
                 for line in temp:
                     parts = line.split()
@@ -49,6 +51,7 @@ class Ftp:
             answer = ''
             try:
                 with FTP(self.ip, self.user, self.pswd) as ftp:
+                    ftp.cwd(self.dir)
                     with open(path_original + file_name, 'wb') as f:
                         answer = ftp.retrbinary('RETR ' + file[0], f.write)
             except Exception as e:
@@ -73,6 +76,7 @@ class Ftp:
     def check_size(self, file, size):
         try:
             with FTP(self.ip, self.user, self.pswd) as ftp:
+                ftp.cwd(self.dir)
                 sleep(int(self.config.get('FILES', 'check_time')))
                 new_size = ftp.size(file)
                 if new_size != int(size):
