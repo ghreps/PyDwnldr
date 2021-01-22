@@ -100,4 +100,4 @@ class Mobile:
         # if not connection.execute(sql[:-1] + ';'):
         #     ##Заливка не удалась, надо шот делать##
         #     print('err')
-        print('[MOBILE FILES] Thread ' + str(process) + ' end')
+        print('[MOBILE FILES] Process ' + str(process) + ' end')

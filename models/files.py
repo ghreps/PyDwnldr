@@ -5,11 +5,14 @@ import zipfile
 import pandas
 import numpy
 
-from requests import get, exceptions
+import asyncio
+import aiohttp
+
 from platform import system
 from time import time
 
 from models.config import Config
+from models.telegram import tg_send_msg
 
 class Files:
 
@@ -22,27 +25,36 @@ class Files:
             self.path = path
             self.read_macs()
     
-    def check_mac_file(self):
-        if os.path.exists('macs.txt'):
-            now = time()
-            lifetime = self.config.get('MACS LIST', 'lifetime')
-            if system() == 'Windows':
-                file_date = os.path.getmtime('macs.txt')
+    async def check_mac_file(self):
+        try:
+            if os.path.exists('macs.txt'):
+                now = time()
+                lifetime = self.config.get('MACS LIST', 'lifetime')
+                if system() == 'Windows':
+                    file_date = os.path.getmtime('macs.txt')
+                else:
+                    stat = os.stat('macs.txt')
+                    try:
+                        file_date = stat.st_birthtime
+                    except AttributeError:
+                        file_date = stat.st_mtime
+                if abs((now - file_date))//86400 > float(lifetime):
+                    try:
+                        await self.mac_update()
+                    except Exception as e:
+                        await tg_send_msg('[CHECK MAC FILE] Cant update macs.txt. Skipping...\n\n' + str(e))                
+                else:
+                    self.read_macs()
             else:
-                stat = os.stat('macs.txt')
                 try:
-                    file_date = stat.st_birthtime
-                except AttributeError:
-                    file_date = stat.st_mtime
-            if abs((now - file_date))//86400 > float(lifetime):
-                if not self.mac_update():
-                    print('[MAC FILE] Cant update .txt. Skipping...')
-            else:
-                self.read_macs()
-        else:
-            if not self.mac_update():
-                input()
-    
+                    await self.mac_update()
+                except Exception as e:
+                    raise Exception('Cant download macs.txt. Retry...\n\n' + str(e))
+        except Exception as e:
+            await tg_send_msg('[CHECK MAC FILE] ' + str(e))
+            await asyncio.sleep(60)
+            await self.check_mac_file()
+
     def read_macs(self):
         temp_list = set()
         with open('macs.txt', 'r') as file:
@@ -51,20 +63,20 @@ class Files:
                 temp_list.add(row[0:2] + ':' + row[2:4] + ':' + row[4:6])
         self.macs_list = tuple(temp_list)
 
-    def mac_update(self):
+    async def mac_update(self):
         try:
-            request = get(self.URL, headers={'User-Agent': 'PostmanRuntime/7.26.8'})
-        except exceptions.RequestException as e:
-            print('[MAC UPDATE] Cant download .txt. Stopping...\n' + e)
-            return False
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.URL, headers={'User-Agent': 'PostmanRuntime/7.26.8'}) as response:
+                    request = await response.read()
+        except Exception as e:
+            raise e
         else:
             if os.path.exists('macs.txt'):
                 os.remove('macs.txt')
             file = open('macs.txt','wb')
-            file.write(request.content)
+            file.write(request)
             file.close()
             self.read_macs()
-            return True
 
     def is_duplicate(self, file, datetime):
         path = '{0}{1}{2}'.format(
@@ -113,8 +125,7 @@ class Files:
                 ) as z:
                 z.write(file_path, file_name)
         except zipfile.BadZipFile:
-            print('[ZIP FILE] Error to zip file ' + file_name)
-            return False
+            raise file_name
         else:
             if delete:
                 os.remove(file_path)

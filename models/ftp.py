@@ -37,7 +37,7 @@ class Ftp:
                 print('[FTP]', len(files), '.txt files')
                 return tuple(files)
         except Exception as e:
-            raise ValueError(e)
+            raise e
 
     def download_files(self, filelist, queue, lock, processes):
         files = Files(self.path)
@@ -84,5 +84,12 @@ class Ftp:
                 else:
                     return True
         except Exception as e:
-                    raise ValueError(e)
+            raise ValueError(e)
+    
+    def delete_file(self, file):
+        try:
+            with FTP(self.ip, self.user, self.pswd) as ftp:
+                ftp.delete(file)
+        except Exception as e:
+            raise ValueError(e)
             

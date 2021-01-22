@@ -93,3 +93,26 @@ class Database:
             else:
                 self.storage.rollback()
             return False
+
+    def get_linked_scanners(self):
+        sql = (
+            'select c.id, s.device_name, s.keys_type_id, f.`customer_id` from customer c '
+            'inner join `facility` f on f.`customer_id` = c.`id` '
+            'inner join `device` d on d.`facility_id` = f.`id` '
+            'inner join `keys` s on s.`key` = d.`key`'
+        )
+        rows = self.query(sql, True)
+        if rows:
+            return tuple(rows)
+        else:
+            print('Please check database config and restart')
+            input()
+
+    def get_gof_scanners(self):
+        sql = 'select device_name, has_key_id, customer_id from `keys` where `keys_type_id` = 10'
+        rows = self.query(sql, True)
+        if rows:
+            return tuple(rows)
+        else:
+            print('Please check database config and restart')
+            input()

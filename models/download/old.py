@@ -1,6 +1,10 @@
 import logging
+from logging.handlers import QueueListener, QueueHandler
+
 import multiprocessing as MP
 import multiprocessing.managers as Manager
+
+import asyncio
 
 from time import sleep
 from datetime import datetime
@@ -9,6 +13,7 @@ from models.ftp import Ftp
 from models.files import Files
 from models.config import Config
 from models.databases import Database
+from models.telegram import tg_send_msg
 
 class Old:
 
@@ -17,6 +22,9 @@ class Old:
     ARCHIVE = config.get('OLD FILES', 'archive')
     PROCESSES = int(config.get('OLD FILES', 'processes'))
     ROOT_PATH = config.get('OLD FILES', 'path')
+
+    formatter = '[%(asctime)s][%(levelname)s][%(name)s] %(message)s'
+    logging.basicConfig(level=logging.INFO)
 
     def __init__(self, filelist, scanners):
         self.filelist = filelist
@@ -29,6 +37,13 @@ class Old:
         self.main()
 
     def main(self):
+        # Log
+        log_queue = MP.Queue(-1)
+        file_handler = logging.FileHandler("logs/downloads/old.log")
+        file_handler.setFormatter(logging.Formatter(self.formatter))
+        queue_listener = QueueListener(log_queue, file_handler)
+        queue_listener.start()
+        #
         manager = Manager.SyncManager()
         manager.start()
         lock = manager.Lock()
@@ -46,16 +61,22 @@ class Old:
         # Start filtering files process
         for i in range(1, self.PROCESSES + 1):
             processes[i] = MP.Process(target=self.run, args=(
-                    i,
+                    str(i),
                     queue,
-                    lock
+                    lock,
+                    log_queue
                 ))
             processes[i].start()
         for i in range(len(processes)):
             processes[i].join()
+        queue_listener.stop()
       
-    def run(self, process, queue, lock):
-        print('[OLD FILES] Process ' + str(process) + ' start')
+    def run(self, process, queue, lock, log_queue):
+        log = '[Process ' + process + '] '
+        log_name = 'app.downloads.old\n'
+        logger = logging.getLogger(log_name)
+        logger.addHandler(QueueHandler(log_queue))
+        logger.info(log + 'Start process')
         sql_rows = set()
         files = Files(self.path)
         while True:
@@ -67,17 +88,25 @@ class Old:
                 file = parts.split('|')
                 if file[0] == 'DONE':
                     break
+                logger.debug('{0}Start {1}'.format(log, file[1]))
                 # Clear from random macs
                 try:
                     files.clear(file[1], True)
-                except ValueError as e:
-                    print('[OLD FILES] Cant clear random macs in {0}:\n{1}'.format(
-                            file[1], e
-                        ))
+                except Exception as e:
+                    error = '{0}Cant clear macs in {1}: {2}'.format(
+                        log, file[1], e
+                    )
+                    logger.error(error)
+                    asyncio.run(tg_send_msg(log_name + error))
                     continue
                 if self.ARCHIVE:
                     # Zip original file
-                    files.zip('/original/', file[1])
+                    try:
+                        files.zip('/original/', file[1])
+                    except Exception as e:
+                        error = '{0}Cant zip {1}'.format(log, e)
+                        logger.warn(error)
+                        asyncio.run(tg_send_msg(log_name + error))
                 # Preparing sql
                 for i, device in enumerate(self.scanners):
                     if file[1][0:10] == device['device_name']:
@@ -88,7 +117,14 @@ class Old:
                                 self.scanners[i]['customer_id'],
                                 int(file[2])//1024
                         ))
-                # ftp.connection.delete(file)
+                try:
+                    pass
+                    #Ftp().delete_file(file[0])
+                except Exception as e:
+                    error = '{0}Cant delete {1} from ftp: {2}'.format(log, file[0], e)
+                    logger.warn(error)
+                    asyncio.run(tg_send_msg(log_name + error))
+                logger.debug('[Process' + process + '] End ' + file[1])
             else:
                 lock.release()
             sleep(1)
@@ -98,4 +134,4 @@ class Old:
         # if not connection.execute(sql[:-1] + ';'):
         #     ##Заливка не удалась, надо шот делать##
         #     print('err')
-        print('[OLD FILES] Process ' + str(process) + ' end')
+        logger.info('[Process ' + process + '] End process')
